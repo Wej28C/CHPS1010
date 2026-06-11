@@ -1,0 +1,15 @@
+schema: '2.0'
+stages:
+  fetch:
+    cmd: python scripts/fetch_data.py
+    deps:
+    - path: scripts/fetch_data.py
+      hash: md5
+      md5: 0f788fb872a106516fba2936aca3797e
+      size: 8623
+    outs:
+    - path: data/raw
+      hash: md5
+      md5: e9166bcae1a9ae645ba51e2a06abf3d8.dir
+      size: 1456641
+      nfiles: 11
