@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.xgboost_model import XGBoostModel
+from models.lstm_model import LSTMModel
 
 load_dotenv()
 
@@ -42,10 +43,9 @@ PROCESSED_DIR = Path("data/processed")
 MODELS_DIR = Path("models/saved")
 TICKERS = ["MC.PA", "CFR.SW", "RMS.PA", "BRBY.L", "OR.PA"]
 
-# Registre des modèles disponibles
-# À compléter quand on ajoutera LSTM, TCN, TFT
 MODEL_REGISTRY = {
     "xgboost": XGBoostModel,
+    "lstm": LSTMModel,
 }
 
 
@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         required=True,
-        choices=list(MODEL_REGISTRY.keys()),
+        choices=["xgboost", "lstm", "tcn", "tft"],
         help="Architecture du modèle",
     )
     parser.add_argument(
@@ -194,8 +194,8 @@ def train_one(model_name: str, ticker: str, window: int,
         # 6. Sauvegarder le modèle comme artefact MLflow
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         model_path = MODELS_DIR / f"{run_name}.pkl"
-        model.save(model_path)
-        mlflow.log_artifact(str(model_path), artifact_path="model")
+        saved_path = model.save(model_path)   # retourne le chemin réel (.pt ou .pkl)
+        mlflow.log_artifact(str(saved_path), artifact_path="model")
 
         # 7. Sauvegarder les feature importances (XGBoost uniquement)
         if hasattr(model, "feature_importances"):
@@ -204,6 +204,18 @@ def train_one(model_name: str, ticker: str, window: int,
             np.save(fi_path, fi)
             mlflow.log_artifact(str(fi_path), artifact_path="model")
             logger.info(f"Feature importances sauvegardées → {fi_path}")
+
+        # 8. Logger les courbes d'apprentissage epoch par epoch (LSTM/TCN/TFT)
+        # MLflow permet de visualiser train_loss vs val_loss dans l'UI
+        if hasattr(model, "_history"):
+            for step, (tl, vl) in enumerate(zip(
+                model._history["train_loss"],
+                model._history["val_loss"]
+            )):
+                mlflow.log_metrics(
+                    {"epoch_train_loss": tl, "epoch_val_loss": vl},
+                    step=step
+                )
 
     logger.info(f"Run MLflow enregistre : {run_name}")
     return test_metrics

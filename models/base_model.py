@@ -153,12 +153,13 @@ class BaseModel(ABC):
             "sharpe_ratio": round(sharpe, 4),
         }
 
-    def save(self, path: Path):
-        """Sérialise le modèle. Implémentation par défaut via joblib."""
+    def save(self, path: Path) -> Path:
+        """Sérialise le modèle via joblib. Retourne le chemin réel."""
         import joblib
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(self.model, path)
+        return path
 
     @classmethod
     def load(cls, path: Path, config: dict):
