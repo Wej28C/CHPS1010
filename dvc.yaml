@@ -1,0 +1,45 @@
+stages:
+  fetch:
+    cmd: python scripts/fetch_data.py
+    deps:
+      - scripts/fetch_data.py
+    outs:
+      - data/raw
+
+  preprocess:
+    cmd: python scripts/preprocess.py
+    deps:
+      - scripts/preprocess.py
+      - data/raw
+    outs:
+      - data/processed
+
+  train:
+    foreach:
+      - {model: xgboost, asset: MC.PA}
+      - {model: xgboost, asset: CFR.SW}
+      - {model: xgboost, asset: RMS.PA}
+      - {model: xgboost, asset: BRBY.L}
+      - {model: xgboost, asset: MONO.PA}
+      - {model: lstm, asset: MC.PA}
+      - {model: lstm, asset: CFR.SW}
+      - {model: lstm, asset: RMS.PA}
+      - {model: lstm, asset: BRBY.L}
+      - {model: lstm, asset: MONO.PA}
+      - {model: tcn, asset: MC.PA}
+      - {model: tcn, asset: CFR.SW}
+      - {model: tcn, asset: RMS.PA}
+      - {model: tcn, asset: BRBY.L}
+      - {model: tcn, asset: MONO.PA}
+    do:
+      cmd: >-
+        python scripts/train.py
+        --model ${item.model}
+        --asset ${item.asset}
+      deps:
+        - scripts/train.py
+        - data/processed
+        - models/${item.model}_model.py
+      metrics:
+        - reports/metrics_${item.model}_${item.asset}.json:
+            cache: false
