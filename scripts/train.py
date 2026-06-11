@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.xgboost_model import XGBoostModel
 from models.lstm_model import LSTMModel
+from models.tcn_model import TCNModel
 
 load_dotenv()
 
@@ -46,6 +47,7 @@ TICKERS = ["MC.PA", "CFR.SW", "RMS.PA", "BRBY.L", "OR.PA"]
 MODEL_REGISTRY = {
     "xgboost": XGBoostModel,
     "lstm": LSTMModel,
+    "tcn": TCNModel,
 }
 
 
