@@ -1,0 +1,39 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data (géré par DVC)
+data/raw/
+data/processed/
+
+# MLflow
+mlruns/
+mlflow.db
+
+# Logs
+logs/
+*.log
+
+# Environnement
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Optuna
+*.db
