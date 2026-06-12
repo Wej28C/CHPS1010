@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from models.xgboost_model import XGBoostModel
 from models.lstm_model import LSTMModel
 from models.tcn_model import TCNModel
+from models.tft_model import TFTModel
 
 load_dotenv()
 
@@ -48,6 +49,7 @@ MODEL_REGISTRY = {
     "xgboost": XGBoostModel,
     "lstm": LSTMModel,
     "tcn": TCNModel,
+    "tft": TFTModel,
 }
 
 
@@ -56,7 +58,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         required=True,
-        choices=["xgboost", "lstm", "tcn", "tft"],
+        choices=list(MODEL_REGISTRY.keys()),
         help="Architecture du modèle",
     )
     parser.add_argument(
