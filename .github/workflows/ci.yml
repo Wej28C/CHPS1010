@@ -1,15 +1,15 @@
-# CI/CD — Tests automatiques à chaque push sur main
+# CI — Tests automatiques à chaque push/PR sur main
 #
-# Ce workflow tourne sur les serveurs gratuits de GitHub (Ubuntu 22.04).
-# Il vérifie deux choses :
-#   1. La qualité du code (flake8 — détecte les erreurs de syntaxe et style)
-#   2. La correction du code  (pytest — 53 tests unitaires)
+# Tourne sur les serveurs gratuits de GitHub (Ubuntu 22.04).
+# Vérifie :
+#   1. Qualité du code (flake8)
+#   2. Correction du code (pytest — 53 tests unitaires)
 #
-# Déclencheurs :
-#   - push sur main        : protection de la branche principale
-#   - pull_request → main  : vérification avant merge (utile si collaboration)
-#
-# Durée attendue : ~3-4 minutes
+# NOTE PYTHON VERSION :
+#   On utilise Python 3.11 uniquement.
+#   - 3.11 = version stable sur les clusters HPC (ROMEO inclus)
+#   - 3.13 est exclu : la librairie `ta` (C extension) et certains
+#     wheels PyTorch ne sont pas encore disponibles pour cp313
 
 name: CI
 
@@ -20,83 +20,71 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
-    name: Tests (Python ${{ matrix.python-version }})
+  lint:
+    name: Lint (flake8)
     runs-on: ubuntu-22.04
 
-    strategy:
-      matrix:
-        # On teste sur Python 3.11 ET 3.13 pour s'assurer de la compatibilité.
-        # 3.11 = version stable la plus répandue sur les clusters HPC (ROMEO)
-        # 3.13 = notre version de développement locale
-        python-version: ["3.11", "3.13"]
-
     steps:
-      # ── 1. Récupérer le code du dépôt ──────────────────────────────────────
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── 2. Installer Python ─────────────────────────────────────────────────
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-          # Cache pip : si requirements.txt n'a pas changé depuis le dernier
-          # run, les paquets sont réutilisés → économise 2-3 minutes par run.
+          python-version: "3.11"
           cache: "pip"
           cache-dependency-path: requirements.txt
 
-      # ── 3. Installer PyTorch CPU ────────────────────────────────────────────
-      # IMPORTANT : sur Linux, `pip install torch` installe la version CUDA
-      # par défaut (~2 Go, inutile sur GitHub Actions qui n'a pas de GPU).
-      # On force explicitement la version CPU (~180 Mo) avant le reste.
-      # Cette étape doit venir AVANT l'installation de requirements.txt.
-      - name: Install PyTorch (CPU-only)
-        run: |
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+      # flake8 seul — pas besoin d'installer torch pour vérifier le style
+      - name: Install flake8
+        run: pip install flake8
 
-      # ── 4. Installer toutes les dépendances ─────────────────────────────────
-      # pip détecte que torch est déjà installé et ne le réinstalle pas.
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      # ── 5. Linting : flake8 ─────────────────────────────────────────────────
-      # flake8 analyse le code sans l'exécuter et détecte :
-      #   - Erreurs de syntaxe Python (E9xx) → le code ne peut pas tourner
-      #   - Variables importées mais non utilisées (F401)
-      #   - Variables définies mais non utilisées (F841)
-      #   - Indentation incorrecte (E1xx)
-      #
-      # On ignore les warnings de style (longueur de ligne E501, etc.)
-      # pour ne bloquer le CI que sur les vraies erreurs.
-      - name: Lint with flake8
+      - name: Lint
         run: |
           flake8 models/ scripts/ tests/ \
             --count \
             --select=E9,F401,F811,F841,W6 \
             --show-source \
             --statistics
-        # E9   = erreurs de syntaxe (SyntaxError, IndentationError)
+        # E9   = erreurs de syntaxe Python (bloquant — le code ne tourne pas)
         # F401 = import non utilisé
-        # F811 = redéfinition d'un nom déjà importé
-        # F841 = variable locale assignée mais jamais utilisée
+        # F811 = redéfinition d'un import
+        # F841 = variable locale jamais utilisée
         # W6   = fonctionnalités dépréciées
 
-      # ── 6. Tests unitaires : pytest ─────────────────────────────────────────
-      # Lance les 53 tests (XGBoost + LSTM + TCN).
-      # --tb=short : affiche un traceback court en cas d'échec
-      # -q         : mode silencieux (moins de bruit dans les logs CI)
-      # --no-header: supprime l'en-tête pytest (inutile dans les logs CI)
-      - name: Run tests with pytest
+  test:
+    name: Tests (Python 3.11)
+    runs-on: ubuntu-22.04
+    # Le job test dépend du lint — inutile de lancer les tests si le code
+    # contient des erreurs de syntaxe
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      # ── PyTorch CPU ─────────────────────────────────────────────────────────
+      # Sur Linux, pip install torch installe par défaut la version CUDA (~2Go).
+      # On force la version CPU (~180Mo) — GitHub Actions n'a pas de GPU.
+      # On cible torch 2.2.* qui a des wheels cp311 stables.
+      - name: Install PyTorch CPU
+        run: |
+          pip install torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+
+      # ── Autres dépendances ──────────────────────────────────────────────────
+      # torch étant déjà installé, pip le skip et installe le reste
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── Tests ───────────────────────────────────────────────────────────────
+      - name: Run pytest
         env:
           PYTHONUTF8: "1"
-          # Désactiver les warnings de dépréciation PyTorch dans les logs CI
           PYTHONWARNINGS: "ignore::DeprecationWarning,ignore::UserWarning"
         run: |
-          python -m pytest tests/ \
-            --tb=short \
-            -q \
-            --no-header \
-            -v
+          python -m pytest tests/ --tb=short -v
