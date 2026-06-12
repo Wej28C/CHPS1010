@@ -1,0 +1,102 @@
+# CI/CD — Tests automatiques à chaque push sur main
+#
+# Ce workflow tourne sur les serveurs gratuits de GitHub (Ubuntu 22.04).
+# Il vérifie deux choses :
+#   1. La qualité du code (flake8 — détecte les erreurs de syntaxe et style)
+#   2. La correction du code  (pytest — 53 tests unitaires)
+#
+# Déclencheurs :
+#   - push sur main        : protection de la branche principale
+#   - pull_request → main  : vérification avant merge (utile si collaboration)
+#
+# Durée attendue : ~3-4 minutes
+
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-22.04
+
+    strategy:
+      matrix:
+        # On teste sur Python 3.11 ET 3.13 pour s'assurer de la compatibilité.
+        # 3.11 = version stable la plus répandue sur les clusters HPC (ROMEO)
+        # 3.13 = notre version de développement locale
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      # ── 1. Récupérer le code du dépôt ──────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Installer Python ─────────────────────────────────────────────────
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          # Cache pip : si requirements.txt n'a pas changé depuis le dernier
+          # run, les paquets sont réutilisés → économise 2-3 minutes par run.
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      # ── 3. Installer PyTorch CPU ────────────────────────────────────────────
+      # IMPORTANT : sur Linux, `pip install torch` installe la version CUDA
+      # par défaut (~2 Go, inutile sur GitHub Actions qui n'a pas de GPU).
+      # On force explicitement la version CPU (~180 Mo) avant le reste.
+      # Cette étape doit venir AVANT l'installation de requirements.txt.
+      - name: Install PyTorch (CPU-only)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      # ── 4. Installer toutes les dépendances ─────────────────────────────────
+      # pip détecte que torch est déjà installé et ne le réinstalle pas.
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 5. Linting : flake8 ─────────────────────────────────────────────────
+      # flake8 analyse le code sans l'exécuter et détecte :
+      #   - Erreurs de syntaxe Python (E9xx) → le code ne peut pas tourner
+      #   - Variables importées mais non utilisées (F401)
+      #   - Variables définies mais non utilisées (F841)
+      #   - Indentation incorrecte (E1xx)
+      #
+      # On ignore les warnings de style (longueur de ligne E501, etc.)
+      # pour ne bloquer le CI que sur les vraies erreurs.
+      - name: Lint with flake8
+        run: |
+          flake8 models/ scripts/ tests/ \
+            --count \
+            --select=E9,F401,F811,F841,W6 \
+            --show-source \
+            --statistics
+        # E9   = erreurs de syntaxe (SyntaxError, IndentationError)
+        # F401 = import non utilisé
+        # F811 = redéfinition d'un nom déjà importé
+        # F841 = variable locale assignée mais jamais utilisée
+        # W6   = fonctionnalités dépréciées
+
+      # ── 6. Tests unitaires : pytest ─────────────────────────────────────────
+      # Lance les 53 tests (XGBoost + LSTM + TCN).
+      # --tb=short : affiche un traceback court en cas d'échec
+      # -q         : mode silencieux (moins de bruit dans les logs CI)
+      # --no-header: supprime l'en-tête pytest (inutile dans les logs CI)
+      - name: Run tests with pytest
+        env:
+          PYTHONUTF8: "1"
+          # Désactiver les warnings de dépréciation PyTorch dans les logs CI
+          PYTHONWARNINGS: "ignore::DeprecationWarning,ignore::UserWarning"
+        run: |
+          python -m pytest tests/ \
+            --tb=short \
+            -q \
+            --no-header \
+            -v
