@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 mkdir -p logs
 
-VENV_DIR="/gpfs/home/wbouchhioua/proj140_venv"
+VENV_DIR="/gpfs/scratch/wbouchhioua/proj140_venv"
 
 echo "============================================================"
 echo " ENTRAINEMENT -- Projet 140"
