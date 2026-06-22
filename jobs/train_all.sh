@@ -11,8 +11,8 @@
 #SBATCH --cpus-per-task=4
 
 # ============================================================================
-# train_all.sh — Entraîne les 4 modèles sur les 5 actifs.
-# Pré-requis : sbatch jobs/setup.sh doit avoir été exécuté.
+# train_all.sh -- Entraine les 4 modeles sur les 5 actifs.
+# Pre-requis : sbatch jobs/setup.sh doit avoir ete execute au prealable.
 # ============================================================================
 
 set -euo pipefail
@@ -21,14 +21,15 @@ cd $SLURM_SUBMIT_DIR
 mkdir -p logs
 
 echo "============================================================"
-echo " ENTRAÎNEMENT — Projet 140"
+echo " ENTRAINEMENT -- Projet 140"
 echo " Job ID   : $SLURM_JOB_ID"
 echo " Hostname : $(hostname)"
 echo " GPU      : $(nvidia-smi --query-gpu=name --format=csv,noheader)"
 echo "============================================================"
 
 romeo_load_armgpu_env
-spack load /<HASH_ARM_PY311>
+spack load /iw66xwz
+spack load /oxq4fb7
 
 source .venv/bin/activate
 
@@ -43,5 +44,5 @@ done
 
 echo ""
 echo "============================================================"
-echo " Fin entraînement — $(date)"
+echo " Fin entrainement -- $(date)"
 echo "============================================================"

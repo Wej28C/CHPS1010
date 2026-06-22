@@ -1,0 +1,20 @@
+# Force LF line endings for all files that will run on Linux (ROMEO/CI)
+# Without this, git on Windows converts LF->CRLF and bash on Linux
+# fails with "syntax error near unexpected token `newline'"
+
+*.sh        text eol=lf
+*.py        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.txt       text eol=lf
+*.md        text eol=lf
+*.cfg       text eol=lf
+*.env       text eol=lf
+Makefile    text eol=lf
+
+# Binary files — no line ending conversion
+*.pt        binary
+*.pkl       binary
+*.npy       binary
+*.parquet   binary
+*.db        binary

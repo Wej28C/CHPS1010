@@ -12,12 +12,12 @@
 #SBATCH --array=0-3
 
 # ============================================================================
-# hpo_array.sh — HPO Optuna en parallèle (un job par modèle).
+# hpo_array.sh -- HPO Optuna en parallele (un job par modele).
 #
-# SLURM array : 4 copies tournent simultanément avec SLURM_ARRAY_TASK_ID
-# valant 0, 1, 2 ou 3 → chaque copie traite un modèle différent.
+# SLURM array : 4 copies tournent simultanement avec SLURM_ARRAY_TASK_ID
+# valant 0, 1, 2 ou 3. Chaque copie traite un modele different.
 #
-# Pré-requis : sbatch jobs/setup.sh puis sbatch jobs/train_all.sh
+# Pre-requis : setup.sh puis train_all.sh
 # ============================================================================
 
 set -euo pipefail
@@ -29,14 +29,15 @@ MODELS=(xgboost lstm tcn tft)
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
 
 echo "============================================================"
-echo " HPO — $MODEL"
+echo " HPO -- $MODEL"
 echo " Job ID   : $SLURM_JOB_ID  Array ID : $SLURM_ARRAY_TASK_ID"
 echo " Hostname : $(hostname)"
 echo " GPU      : $(nvidia-smi --query-gpu=name --format=csv,noheader)"
 echo "============================================================"
 
 romeo_load_armgpu_env
-spack load /<HASH_ARM_PY311>
+spack load /iw66xwz
+spack load /oxq4fb7
 
 source .venv/bin/activate
 
@@ -48,5 +49,5 @@ python scripts/hpo.py --model $MODEL --asset all --trials 100
 
 echo ""
 echo "============================================================"
-echo " Fin HPO $MODEL — $(date)"
+echo " Fin HPO $MODEL -- $(date)"
 echo "============================================================"
