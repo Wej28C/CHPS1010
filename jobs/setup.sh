@@ -29,7 +29,7 @@ mkdir -p logs
 
 # Repertoire du venv sur GPFS (2.3 PB libres) hors du HOME systeme
 # /gpfs/home/wbouchhioua est le HOME GPFS -- filesystem distinct du HOME systeme
-VENV_DIR="/gpfs/scratch/wbouchhioua/proj140_venv"
+VENV_DIR="/project/r250123/proj140_venv"
 
 # Forcer pip a ne pas ecrire de cache (evite de remplir HOME)
 export PIP_NO_CACHE_DIR=1
@@ -42,7 +42,7 @@ echo " Hostname  : $(hostname)"
 echo " Arch      : $(uname -m)"
 echo " Workdir   : $(pwd)"
 echo " Venv dir  : $VENV_DIR"
-echo " SCRATCH   : /gpfs/scratch/wbouchhioua"
+echo " SCRATCH   : /project/r250123"
 echo " Quota HOME : $(quota -s 2>/dev/null | tail -1 || echo 'N/A')"
 echo "============================================================"
 
