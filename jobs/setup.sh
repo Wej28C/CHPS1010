@@ -11,9 +11,11 @@
 
 # ============================================================================
 # setup.sh
-# A LANCER UNE SEULE FOIS avant tout job d'entrainement ou d'HPO.
-# Cree un venv Python dans .venv/ avec toutes les dependances de
-# requirements.txt. PyTorch est installe avec le support CUDA (noeuds armgpu).
+# Strategie quota : venv installe sur SCRATCH (pas sur HOME).
+# Le HOME ROMEO a un quota tres limite ; le SCRATCH est genereux.
+#
+# torch est fourni par spack (ARM+CUDA, pas disponible sur PyPI aarch64).
+# Tous les autres paquets vont dans $VENV_DIR sur SCRATCH, sans cache pip.
 #
 # Usage :
 #   mkdir -p logs
@@ -22,10 +24,17 @@
 
 set -euo pipefail
 
-cd $SLURM_SUBMIT_DIR
+cd "$SLURM_SUBMIT_DIR"
 mkdir -p logs
 
-VENV_DIR=".venv"
+# Repertoire du venv sur SCRATCH (quota large) plutot que HOME (quota limite)
+# $SCRATCH est defini par ROMEO ; si absent, on utilise /scratch/users/$USER
+SCRATCH_DIR="${SCRATCH:-/scratch/users/$USER}"
+VENV_DIR="$SCRATCH_DIR/proj140_venv"
+
+# Forcer pip a ne pas ecrire de cache (evite de remplir HOME)
+export PIP_NO_CACHE_DIR=1
+export PIP_CACHE_DIR="/tmp/pip_cache_$$"
 
 echo "============================================================"
 echo " SETUP VENV Python -- Projet 140 MLOps"
@@ -34,75 +43,97 @@ echo " Hostname  : $(hostname)"
 echo " Arch      : $(uname -m)"
 echo " Workdir   : $(pwd)"
 echo " Venv dir  : $VENV_DIR"
+echo " SCRATCH   : $SCRATCH_DIR"
+echo " Quota HOME : $(quota -s 2>/dev/null | tail -1 || echo 'N/A')"
 echo "============================================================"
 
 # Charger l'environnement ARM GPU via Spack
 romeo_load_armgpu_env
-
-# /iw66xwz = cuda ou toolkit armgpu (hash trouve avec : spack find --long)
-# /oxq4fb7 = python@3.11 pour armgpu
 spack load /iw66xwz
 spack load /oxq4fb7
 
+# Charger PyTorch depuis Spack (compile ARM + CUDA)
+spack load py-torch
+
 PYTHON=$(which python3)
 echo "Python     : $PYTHON ($($PYTHON --version))"
-echo "CUDA       : $(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null || echo 'pas de GPU sur noeud de login')"
+echo "torch spack: $(python3 -c 'import torch; print(torch.__version__)')"
 
-# Recreer le venv proprement
+# Supprimer l'ancien venv si necessaire
 if [[ -d "$VENV_DIR" ]]; then
-    echo "Suppression de l'ancien venv..."
+    echo "Suppression de l'ancien venv sur SCRATCH..."
     rm -rf "$VENV_DIR"
 fi
 
-echo "Creation du venv..."
-$PYTHON -m venv "$VENV_DIR"
+# Creer le venv sur SCRATCH avec --system-site-packages
+# --system-site-packages : herite de torch (et autres) depuis spack
+echo "Creation du venv sur SCRATCH..."
+$PYTHON -m venv --system-site-packages "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 echo "Venv actif : $(which python3)"
 
-pip install --upgrade pip --quiet
+# Mettre a jour pip sans cache
+pip install --upgrade pip --no-cache-dir --quiet
 
-# Installer PyTorch CUDA EN PREMIER avant requirements.txt
-# requirements.txt contient "torch==2.4.1" sans index URL -- si pip
-# le voit en premier il prend la version CPU. En l'installant ici avec
-# l'index CUDA, pip le detecte comme deja satisfait et le skip ensuite.
-# Verifier la version CUDA avec : nvidia-smi | grep "CUDA Version"
-# cu118 -> 11.8 / cu121 -> 12.1 / cu124 -> 12.4
+# Installer uniquement les paquets PAS disponibles via spack
+# torch est exclu (fourni par spack)
+# numpy, scipy peuvent etre deja la via spack -- on installe au cas ou
 echo ""
-echo "Installation de PyTorch avec support CUDA..."
-pip install --quiet \
-    torch==2.4.1 \
-    --index-url https://download.pytorch.org/whl/cu121
+echo "Installation des dependances sans cache (SCRATCH)..."
+grep -vE "^torch" "$SLURM_SUBMIT_DIR/requirements.txt" > /tmp/req_no_torch_$$.txt
 
-# Installer le reste des dependances depuis requirements.txt
-echo ""
-echo "Installation de requirements.txt..."
-pip install --quiet -r requirements.txt
+pip install --no-cache-dir --quiet -r /tmp/req_no_torch_$$.txt
+rm /tmp/req_no_torch_$$.txt
 
-# Verification
+# Nettoyer le cache temporaire
+rm -rf "$PIP_CACHE_DIR"
+
+# Creer un fichier d'activation facile a sourcer
+ACTIVATE_SCRIPT="$SLURM_SUBMIT_DIR/jobs/activate_venv.sh"
+cat > "$ACTIVATE_SCRIPT" << ACTIVATE_EOF
+#!/usr/bin/env bash
+# Source ce fichier pour activer le venv du projet
+romeo_load_armgpu_env
+spack load /iw66xwz
+spack load /oxq4fb7
+spack load py-torch
+source "${VENV_DIR}/bin/activate"
+export PYTHONUTF8=1
+export MLFLOW_TRACKING_URI="sqlite:///mlflow.db"
+export OPTUNA_STORAGE="sqlite:///optuna.db"
+export PIP_NO_CACHE_DIR=1
+ACTIVATE_EOF
+chmod +x "$ACTIVATE_SCRIPT"
+
+# Verification finale
 echo ""
 echo "======== Verification ========"
 python3 -c "
 import sys, torch, numpy, pandas, mlflow, optuna, xgboost, sklearn, ta
 
-print('Python     : ' + sys.version.split()[0])
-print('torch      : ' + torch.__version__)
+print('Python      : ' + sys.version.split()[0])
+print('torch       : ' + torch.__version__)
 cuda_ok = torch.cuda.is_available()
 gpu_name = torch.cuda.get_device_name(0) if cuda_ok else 'N/A'
-print('CUDA dispo : ' + str(cuda_ok) + ' (' + gpu_name + ')')
-print('numpy      : ' + numpy.__version__)
-print('pandas     : ' + pandas.__version__)
-print('mlflow     : ' + mlflow.__version__)
-print('optuna     : ' + optuna.__version__)
-print('xgboost    : ' + xgboost.__version__)
+print('CUDA dispo  : ' + str(cuda_ok) + ' (' + gpu_name + ')')
+print('numpy       : ' + numpy.__version__)
+print('pandas      : ' + pandas.__version__)
+print('mlflow      : ' + mlflow.__version__)
+print('optuna      : ' + optuna.__version__)
+print('xgboost     : ' + xgboost.__version__)
 print('scikit-learn: ' + sklearn.__version__)
-print('ta         : ' + ta.__version__)
+print('ta          : ' + ta.__version__)
 print('TOUS OK')
 "
 
 deactivate
 echo ""
 echo "============================================================"
-echo " VENV PRET dans : $(pwd)/$VENV_DIR"
+echo " VENV PRET dans : $VENV_DIR"
+echo ""
+echo " Pour activer manuellement sur le login node :"
+echo "   source jobs/activate_venv.sh"
+echo ""
 echo " Lancer ensuite :"
 echo "   sbatch jobs/train_all.sh"
 echo "   sbatch jobs/hpo_array.sh"

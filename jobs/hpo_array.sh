@@ -11,19 +11,13 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --array=0-3
 
-# ============================================================================
-# hpo_array.sh -- HPO Optuna en parallele (un job par modele).
-#
-# SLURM array : 4 copies tournent simultanement avec SLURM_ARRAY_TASK_ID
-# valant 0, 1, 2 ou 3. Chaque copie traite un modele different.
-#
-# Pre-requis : setup.sh puis train_all.sh
-# ============================================================================
-
 set -euo pipefail
 
-cd $SLURM_SUBMIT_DIR
+cd "$SLURM_SUBMIT_DIR"
 mkdir -p logs
+
+SCRATCH_DIR="${SCRATCH:-/scratch/users/$USER}"
+VENV_DIR="$SCRATCH_DIR/proj140_venv"
 
 MODELS=(xgboost lstm tcn tft)
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
@@ -33,19 +27,22 @@ echo " HPO -- $MODEL"
 echo " Job ID   : $SLURM_JOB_ID  Array ID : $SLURM_ARRAY_TASK_ID"
 echo " Hostname : $(hostname)"
 echo " GPU      : $(nvidia-smi --query-gpu=name --format=csv,noheader)"
+echo " Venv     : $VENV_DIR"
 echo "============================================================"
 
 romeo_load_armgpu_env
 spack load /iw66xwz
 spack load /oxq4fb7
+spack load py-torch
 
-source .venv/bin/activate
+source "$VENV_DIR/bin/activate"
 
 export PYTHONUTF8=1
 export MLFLOW_TRACKING_URI="sqlite:///mlflow.db"
 export OPTUNA_STORAGE="sqlite:///optuna.db"
+export PIP_NO_CACHE_DIR=1
 
-python scripts/hpo.py --model $MODEL --asset all --trials 100
+python scripts/hpo.py --model "$MODEL" --asset all --trials 100
 
 echo ""
 echo "============================================================"
