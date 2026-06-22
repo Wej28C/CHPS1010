@@ -3,19 +3,23 @@
 #SBATCH --job-name=proj140-setup-venv
 #SBATCH --time=00:30:00
 #SBATCH --mem=8G
-#SBATCH --constraint="armgpu"
+#SBATCH --constraint=armgpu
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
+#SBATCH --gpus-per-node=1
 #SBATCH --output=logs/setup_venv_%J.out
 #SBATCH --error=logs/setup_venv_%J.err
+#SBATCH --chdir=/project/r250123/CHPS1010/CHPS1010
 
 # ============================================================================
 # setup.sh
-# Strategie quota : venv installe sur SCRATCH (pas sur HOME).
-# Le HOME ROMEO a un quota tres limite ; le SCRATCH est genereux.
+# A LANCER UNE SEULE FOIS avant les jobs d'entrainement ou d'HPO.
 #
-# torch est fourni par spack (ARM+CUDA, pas disponible sur PyPI aarch64).
-# Tous les autres paquets vont dans $VENV_DIR sur SCRATCH, sans cache pip.
+# Strategie torch sur ROMEO armgpu (aarch64) :
+#   PyPI ne fournit pas de wheels torch pour ARM -> pip install torch echoue.
+#   Solution : spack load py-torch (compile pour ARM + CUDA sur ROMEO) puis
+#   venv avec --system-site-packages pour heriter de torch via spack.
+#   Le reste des dependances (mlflow, optuna, etc.) vient de pip.
 #
 # Usage :
 #   mkdir -p logs
@@ -24,14 +28,9 @@
 
 set -euo pipefail
 
-cd "$SLURM_SUBMIT_DIR"
-mkdir -p logs
+PROJECT_DIR=/project/r250123/CHPS1010/CHPS1010
+VENV_DIR="$PROJECT_DIR/.venv"
 
-# Repertoire du venv sur GPFS (2.3 PB libres) hors du HOME systeme
-# /gpfs/home/wbouchhioua est le HOME GPFS -- filesystem distinct du HOME systeme
-VENV_DIR="/project/r250123/proj140_venv"
-
-# Forcer pip a ne pas ecrire de cache (evite de remplir HOME)
 export PIP_NO_CACHE_DIR=1
 export PIP_CACHE_DIR="/tmp/pip_cache_$$"
 
@@ -40,71 +39,38 @@ echo " SETUP VENV Python -- Projet 140 MLOps"
 echo " Job ID    : $SLURM_JOB_ID"
 echo " Hostname  : $(hostname)"
 echo " Arch      : $(uname -m)"
-echo " Workdir   : $(pwd)"
+echo " Project   : $PROJECT_DIR"
 echo " Venv dir  : $VENV_DIR"
-echo " SCRATCH   : /project/r250123"
-echo " Quota HOME : $(quota -s 2>/dev/null | tail -1 || echo 'N/A')"
 echo "============================================================"
 
-# Charger l'environnement ARM GPU via Spack
 romeo_load_armgpu_env
 spack load /iw66xwz
 spack load /oxq4fb7
-
-# Charger PyTorch depuis Spack (compile ARM + CUDA)
 spack load py-torch
 
 PYTHON=$(which python3)
 echo "Python     : $PYTHON ($($PYTHON --version))"
 echo "torch spack: $(python3 -c 'import torch; print(torch.__version__)')"
 
-# Supprimer l'ancien venv si necessaire
 if [[ -d "$VENV_DIR" ]]; then
-    echo "Suppression de l'ancien venv sur SCRATCH..."
+    echo "Suppression de l'ancien venv..."
     rm -rf "$VENV_DIR"
 fi
 
-# Creer le venv sur SCRATCH avec --system-site-packages
-# --system-site-packages : herite de torch (et autres) depuis spack
-echo "Creation du venv sur SCRATCH..."
+echo "Creation du venv (--system-site-packages pour heriter de torch spack)..."
 $PYTHON -m venv --system-site-packages "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 echo "Venv actif : $(which python3)"
 
-# Mettre a jour pip sans cache
 pip install --upgrade pip --no-cache-dir --quiet
 
-# Installer uniquement les paquets PAS disponibles via spack
-# torch est exclu (fourni par spack)
-# numpy, scipy peuvent etre deja la via spack -- on installe au cas ou
 echo ""
-echo "Installation des dependances sans cache (SCRATCH)..."
-grep -vE "^torch" "$SLURM_SUBMIT_DIR/requirements.txt" > /tmp/req_no_torch_$$.txt
-
+echo "Installation des dependances (torch exclu -- fourni par spack)..."
+grep -vE "^torch" "$PROJECT_DIR/requirements.txt" > /tmp/req_no_torch_$$.txt
 pip install --no-cache-dir --quiet -r /tmp/req_no_torch_$$.txt
 rm /tmp/req_no_torch_$$.txt
-
-# Nettoyer le cache temporaire
 rm -rf "$PIP_CACHE_DIR"
 
-# Creer un fichier d'activation facile a sourcer
-ACTIVATE_SCRIPT="$SLURM_SUBMIT_DIR/jobs/activate_venv.sh"
-cat > "$ACTIVATE_SCRIPT" << ACTIVATE_EOF
-#!/usr/bin/env bash
-# Source ce fichier pour activer le venv du projet
-romeo_load_armgpu_env
-spack load /iw66xwz
-spack load /oxq4fb7
-spack load py-torch
-source "${VENV_DIR}/bin/activate"
-export PYTHONUTF8=1
-export MLFLOW_TRACKING_URI="sqlite:///mlflow.db"
-export OPTUNA_STORAGE="sqlite:///optuna.db"
-export PIP_NO_CACHE_DIR=1
-ACTIVATE_EOF
-chmod +x "$ACTIVATE_SCRIPT"
-
-# Verification finale
 echo ""
 echo "======== Verification ========"
 python3 -c "
@@ -129,10 +95,6 @@ deactivate
 echo ""
 echo "============================================================"
 echo " VENV PRET dans : $VENV_DIR"
-echo ""
-echo " Pour activer manuellement sur le login node :"
-echo "   source jobs/activate_venv.sh"
-echo ""
 echo " Lancer ensuite :"
 echo "   sbatch jobs/train_all.sh"
 echo "   sbatch jobs/hpo_array.sh"

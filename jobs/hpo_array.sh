@@ -5,18 +5,17 @@
 #SBATCH --error=logs/hpo_%A_%a.err
 #SBATCH --time=04:00:00
 #SBATCH --mem=16G
-#SBATCH --constraint="armgpu"
-#SBATCH --gres=gpu:1
+#SBATCH --constraint=armgpu
+#SBATCH --gpus-per-node=1
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH --array=0-3
+#SBATCH --chdir=/project/r250123/CHPS1010/CHPS1010
 
 set -euo pipefail
 
-cd "$SLURM_SUBMIT_DIR"
-mkdir -p logs
-
-VENV_DIR="/project/r250123/proj140_venv"
+PROJECT_DIR=/project/r250123/CHPS1010/CHPS1010
+VENV_DIR="$PROJECT_DIR/.venv"
 
 MODELS=(xgboost lstm tcn tft)
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
