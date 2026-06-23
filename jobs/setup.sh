@@ -14,10 +14,8 @@ set -euo pipefail
 PROJECT_DIR=/project/r250123/CHPS1010/CHPS1010
 VENV_DIR="$PROJECT_DIR/.venv"
 
-# Rediriger tmp vers /project (evite "No space left on device" sur /tmp)
 export TMPDIR="$PROJECT_DIR/.tmp_pip"
 mkdir -p "$TMPDIR"
-
 export PIP_NO_CACHE_DIR=1
 
 echo "============================================================"
@@ -25,15 +23,10 @@ echo " SETUP VENV -- Projet 140 MLOps"
 echo " Job ID  : $SLURM_JOB_ID"
 echo " Host    : $(hostname)"
 echo " Arch    : $(uname -m)"
-echo " Project : $PROJECT_DIR"
 echo "============================================================"
 
-# Charger Python 3.11 depuis le module ou spack x86
-if command -v module &>/dev/null; then
-    module load python/3.11 2>/dev/null || true
-fi
+spack load /2celb2j
 
-# Verifier quelle version on a
 PYTHON=$(which python3)
 echo "Python : $PYTHON ($($PYTHON --version))"
 

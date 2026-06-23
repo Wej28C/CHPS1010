@@ -20,6 +20,7 @@ echo " Job ID  : $SLURM_JOB_ID"
 echo " Host    : $(hostname)"
 echo "============================================================"
 
+spack load /2celb2j
 source "$VENV_DIR/bin/activate"
 
 export PYTHONUTF8=1

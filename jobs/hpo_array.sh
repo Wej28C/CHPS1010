@@ -23,6 +23,7 @@ echo " HPO -- $MODEL | Job $SLURM_JOB_ID array $SLURM_ARRAY_TASK_ID"
 echo " Host : $(hostname)"
 echo "============================================================"
 
+spack load /2celb2j
 source "$VENV_DIR/bin/activate"
 
 export PYTHONUTF8=1
