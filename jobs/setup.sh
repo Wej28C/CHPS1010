@@ -14,6 +14,10 @@ set -euo pipefail
 PROJECT_DIR=/project/r250123/CHPS1010/CHPS1010
 VENV_DIR="$PROJECT_DIR/.venv"
 
+# Rediriger tmp vers /project (evite "No space left on device" sur /tmp)
+export TMPDIR="$PROJECT_DIR/.tmp_pip"
+mkdir -p "$TMPDIR"
+
 export PIP_NO_CACHE_DIR=1
 
 echo "============================================================"
@@ -24,6 +28,12 @@ echo " Arch    : $(uname -m)"
 echo " Project : $PROJECT_DIR"
 echo "============================================================"
 
+# Charger Python 3.11 depuis le module ou spack x86
+if command -v module &>/dev/null; then
+    module load python/3.11 2>/dev/null || true
+fi
+
+# Verifier quelle version on a
 PYTHON=$(which python3)
 echo "Python : $PYTHON ($($PYTHON --version))"
 
@@ -35,7 +45,7 @@ $PYTHON -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 
 pip install --upgrade pip --no-cache-dir --quiet
-pip install --no-cache-dir --quiet -r "$PROJECT_DIR/requirements.txt"
+pip install --no-cache-dir -r "$PROJECT_DIR/requirements.txt"
 
 echo ""
 echo "======== Verification ========"
@@ -43,7 +53,6 @@ python3 -c "
 import sys, torch, numpy, pandas, mlflow, optuna, xgboost, sklearn, ta
 print('Python      : ' + sys.version.split()[0])
 print('torch       : ' + torch.__version__)
-print('CUDA dispo  : ' + str(torch.cuda.is_available()))
 print('numpy       : ' + numpy.__version__)
 print('pandas      : ' + pandas.__version__)
 print('mlflow      : ' + mlflow.__version__)
@@ -55,6 +64,8 @@ print('TOUS OK')
 "
 
 deactivate
+rm -rf "$TMPDIR"
+
 echo ""
 echo "============================================================"
 echo " VENV PRET : $VENV_DIR"
